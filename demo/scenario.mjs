@@ -98,6 +98,22 @@ async function main() {
   await sleep(8000);
   console.log();
 
+  // ===== HIVE MEMORY =====
+  console.log('--- HIVE MEMORY — Shared Knowledge ---');
+  await sleep(1000);
+  for (const agent of [alpha, beta, gamma]) {
+    const patterns = agent.hive.getAll();
+    const patternKeys = Object.keys(patterns).filter(k => k.startsWith('pattern:'));
+    if (patternKeys.length > 0) {
+      for (const key of patternKeys) {
+        const taskType = key.replace('pattern:', '');
+        const best = agent.hive.getBestStrategy(taskType);
+        console.log(`  [${agent.name}] ${taskType}: best strategy = ${best || 'none'} (${(patterns[key].value || []).length} entries)`);
+      }
+    }
+  }
+  console.log();
+
   // ===== SUMMARY =====
   console.log('='.repeat(70));
   console.log('  DEMO COMPLETE — Summary');
@@ -113,6 +129,15 @@ async function main() {
   console.log(`  Alpha: ${JSON.stringify(alpha.reputation.toJSON())}`);
   console.log(`  Beta:  ${JSON.stringify(beta.reputation.toJSON())}`);
   console.log(`  Gamma: ${JSON.stringify(gamma.reputation.toJSON())}`);
+  console.log();
+  console.log('Hive Memory entries:');
+  const allHive = alpha.hive.getAll();
+  for (const [key, entry] of Object.entries(allHive)) {
+    if (key.startsWith('pattern:')) {
+      const count = Array.isArray(entry.value) ? entry.value.length : 1;
+      console.log(`  ${key}: ${count} patterns`);
+    }
+  }
   console.log();
   console.log('Proof of Coordination log: logs/proof-of-coordination.jsonl');
   console.log('='.repeat(70));

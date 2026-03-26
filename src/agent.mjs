@@ -9,6 +9,7 @@ import {
 import { signMessage, verifyMessage, createReplayDetector, makeNonce, hashPayload } from './crypto.mjs';
 import { Reputation } from './reputation.mjs';
 import { buildProof, appendProofLog, createChainEntry } from './proof.mjs';
+import { HiveMemory } from './hive-memory.mjs';
 
 export class Agent {
   constructor(name, mqttPort, capabilities = []) {
@@ -16,6 +17,7 @@ export class Agent {
     this.port = mqttPort;
     this.capabilities = capabilities;
     this.reputation = new Reputation(name);
+    this.hive = new HiveMemory(name);
     this.client = null;
     this.peers = new Map();           // peerId → { capabilities, status, reputation, ... }
     this.pendingTasks = new Map();    // taskId → task proposal
@@ -63,6 +65,9 @@ export class Agent {
         this.client.subscribe(`${TOPICS.RESULT}/+`, { qos: 2 });
         this.client.subscribe(`${TOPICS.VERIFY}/+`, { qos: 2 });
         this.client.subscribe(`${TOPICS.PROOF}/+`, { qos: 2 });
+
+        // Attach hive memory to MQTT client
+        this.hive.attach(this.client);
 
         // Publish hello (discovery)
         this._publishHello();
@@ -237,6 +242,10 @@ export class Agent {
 
     const duration_ms = Date.now() - startTime;
     this.reputation.update(success, duration_ms, task.deadline_ms || 30000);
+
+    // Capitalize learning in hive memory
+    const taskType = (task.requirements || []).sort().join('+') || 'general';
+    this.hive.publishPattern(taskType, this.name, success);
     const resultPayload = {
       id: `result-${randomUUID().slice(0, 8)}`,
       type: 'execute',

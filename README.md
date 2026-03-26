@@ -7,122 +7,214 @@ A network of autonomous AI agents that **negotiate**, **assign**, **execute**, a
 ## Architecture
 
 ```
-┌─────────────┐    FoxMQ P2P     ┌─────────────┐
-│  Agent Alpha │◄── consensus ──►│  Agent Beta  │
-│  (proposer)  │   (Vertex BFT)  │  (compute)   │
-└──────┬───────┘                 └──────┬───────┘
-       │        ┌─────────────┐         │
-       └───────►│ Agent Gamma  │◄───────┘
-                │ (research)   │
-                └─────────────┘
+                         ┌──────────────────────────────────────┐
+                         │     FoxMQ Cluster (Vertex BFT)       │
+                         │  4 nodes · 3N+1 · tolerates 1 fault  │
+                         │                                      │
+                         │  node0:1883  node1:1884               │
+                         │  node2:1885  node3:1886               │
+                         │     (cluster: 19793-19796 UDP)        │
+                         └──────────┬───────────────────────────┘
+                                    │ MQTT 5.0 (QoS 2)
+               ┌────────────────────┼────────────────────┐
+               │                    │                    │
+        ┌──────▼──────┐     ┌──────▼──────┐     ┌──────▼──────┐
+        │ Agent Alpha  │     │ Agent Beta   │     │ Agent Gamma  │
+        │ (proposer)   │     │ (compute)    │     │ (research)   │
+        │              │     │              │     │              │
+        │ ┌──────────┐ │     │ ┌──────────┐ │     │ ┌──────────┐ │
+        │ │Reputation│ │     │ │Reputation│ │     │ │Reputation│ │
+        │ │Hive Mem  │ │     │ │Hive Mem  │ │     │ │Hive Mem  │ │
+        │ │Crypto    │ │     │ │Crypto    │ │     │ │Crypto    │ │
+        │ └──────────┘ │     │ └──────────┘ │     │ └──────────┘ │
+        └──────────────┘     └──────────────┘     └──────────────┘
+
+        Coordination Loop (per task):
+
+        DISCOVER ──► NEGOTIATE ──► COMMIT ──► EXECUTE ──► VERIFY ──► PROOF
+        (hello)      (propose)     (bid+      (winner     (cross-    (multi-signed
+                                   resolve)    runs task)  validate)  hash chain)
 ```
 
-**Key features:**
-- **Leaderless agreement** — all agents compute the same winner deterministically (Vertex fair ordering)
-- **Proof of Coordination** — hash-chained, multi-signed audit log of every task lifecycle
-- **HMAC-SHA256 message integrity** + nonce-based anti-replay
-- **Dynamic reputation** — scoring with quality bonus, temporal decay, persistence
-- **Hive Memory** — distributed shared knowledge store for agent learning
-- **BFT fault tolerance** — 4 FoxMQ nodes, tolerates 1 node failure
+Each agent connects to a **different** FoxMQ node. Vertex BFT consensus ensures all agents see messages in the **same order** — enabling leaderless deterministic agreement.
 
-## Coordination Loop
+## Features
 
+| Feature | Description |
+|---------|-------------|
+| **Leaderless Agreement** | All agents compute the same winner deterministically — no leader, no SPOF |
+| **5-Phase Coordination** | discover → negotiate → commit → execute → verify |
+| **Proof of Coordination** | Hash-chained, multi-signed audit log of every task lifecycle |
+| **HMAC-SHA256 Security** | Every message signed; unsigned messages rejected; nonce anti-replay |
+| **Dynamic Reputation** | +10 success (+ quality bonus), -15 failure, temporal decay, persistence |
+| **Hive Memory** | Distributed key-value store — agents share learned patterns via MQTT |
+| **BFT Fault Tolerance** | 4 FoxMQ nodes (3N+1), tolerates 1 node failure |
+| **Verify Timeout** | If a verifier dies, proof finalizes with available votes after 10s |
+| **Stale Detection** | Agents detect unresponsive peers in 8s, auto-recover on reconnect |
+| **47 Unit Tests** | 27 reputation + 20 hive memory, all passing |
+
+## Demo
+
+### Prerequisites
+
+- **Node.js** 18+ with npm
+- **FoxMQ** v0.3.1 binary (included or download from [tashigit/foxmq](https://github.com/tashigit/foxmq/releases))
+- Linux x86_64
+
+### Quick Start (one command)
+
+```bash
+npm install
+bash demo/full-demo.sh
 ```
-DISCOVER → NEGOTIATE → COMMIT → EXECUTE → VERIFY → PROOF
-   │           │          │         │         │        │
- agents      propose    bids     winner    result   multi-signed
- find each   a task    from all  selected  produced  proof of
- other       on MQTT   agents   (leaderless) + published coordination
-```
 
-## Quick Start
+This starts 4 FoxMQ nodes, runs 47 unit tests, executes the 3-task scenario, and prints a full summary.
+
+### Step by Step
 
 ```bash
 # 1. Install dependencies
 npm install
 
-# 2. Start FoxMQ cluster (4 nodes)
-bash demo/run-demo.sh
+# 2. Download FoxMQ (if not present)
+wget https://github.com/tashigit/foxmq/releases/download/v0.3.1/foxmq_0.3.1_linux-amd64.zip
+unzip foxmq_0.3.1_linux-amd64.zip && chmod +x foxmq
 
-# Or manually:
+# 3. Generate cluster config (already done — foxmq.d/ exists)
+./foxmq address-book from-range 127.0.0.1 19793 19796
+./foxmq user add warmup warmup123
+
+# 4. Start FoxMQ cluster (4 nodes)
 ./foxmq run --secret-key-file=foxmq.d/key_0.pem --mqtt-addr=0.0.0.0:1883 --cluster-addr=0.0.0.0:19793 &
 ./foxmq run --secret-key-file=foxmq.d/key_1.pem --mqtt-addr=0.0.0.0:1884 --cluster-addr=0.0.0.0:19794 &
 ./foxmq run --secret-key-file=foxmq.d/key_2.pem --mqtt-addr=0.0.0.0:1885 --cluster-addr=0.0.0.0:19795 &
 ./foxmq run --secret-key-file=foxmq.d/key_3.pem --mqtt-addr=0.0.0.0:1886 --cluster-addr=0.0.0.0:19796 &
 
-# 3. Run the demo scenario
+# 5. Run the demo scenario
 node demo/scenario.mjs
 
-# 4. Run tests
-node test/reputation.test.mjs
-node test/hive-memory.test.mjs
+# 6. Run the warm-up (P2P handshake)
+node warmup/stateful-handshake.mjs
 ```
+
+### What the Demo Shows
+
+1. **Discovery** — 3 agents find each other via FoxMQ P2P
+2. **Task 1** (Sentiment Analysis) — 2 bids, deterministic winner selection, execution, 2/2 verification, Proof of Coordination
+3. **Task 2** (Text Statistics) — 1 bid, execution, verification, proof
+4. **Task 3** (Keyword Extraction) — 1 bid, execution, verification, proof
+5. **Hive Memory** — agents share learned patterns (which strategy works for which task type)
+6. **Reputation** — scores update dynamically (Alpha=50 idle, Beta=65, Gamma=80)
+
+## Testing
+
+```bash
+# Run all tests (47 total)
+node test/reputation.test.mjs   # 27 tests — scoring, decay, persistence, thresholds
+node test/hive-memory.test.mjs  # 20 tests — set/get, patterns, conflict resolution, persistence
+
+# Or via full-demo.sh which runs both
+bash demo/full-demo.sh
+```
+
+| Test Suite | Tests | Coverage |
+|------------|-------|----------|
+| `reputation.test.mjs` | 27 | Scoring, quality bonus, failure penalty, clamping, bid score, critical threshold, temporal decay, persistence, toJSON |
+| `hive-memory.test.mjs` | 20 | Set/get, getAll, last-write-wins, subscribe, patterns, best strategy, cap at 10, persistence, complex values |
+
+## Security
+
+### Message Integrity (HMAC-SHA256)
+
+Every MQTT message includes a `sig` field — HMAC-SHA256 of the canonicalized JSON payload with a shared secret. Messages without a valid signature are **silently dropped**.
+
+```javascript
+// Signing: canonical JSON → HMAC-SHA256
+const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+const sig = createHmac('sha256', SWARM_SECRET).update(canonical).digest('hex');
+```
+
+### Anti-Replay Protection
+
+Each message includes a `nonce` (UUID) and `ts` (timestamp). Agents maintain a per-agent nonce cache (60s TTL). Rejected if:
+- Nonce already seen (duplicate)
+- Timestamp > 30s in the past (stale)
+
+### Proof of Coordination (Hash Chain)
+
+Each completed task produces a Proof of Coordination — a hash-chained record of all phases:
+
+```
+negotiate → commit → execute → verify → PROOF
+   hash₁  →  hash₂  → hash₃  → hash₄  → final hash (links to previous proof)
+```
+
+Each phase entry includes the signer's HMAC. The final proof contains all verification signatures from non-executor agents. Stored in `logs/proof-of-coordination.jsonl` (append-only).
+
+## MQTT Topics
+
+| Topic | QoS | Retain | Purpose |
+|-------|-----|--------|---------|
+| `taskmarket/hello/<agentId>` | 1 | Yes | Agent discovery + capabilities |
+| `taskmarket/state/<agentId>` | 1 | Yes | Heartbeat + reputation score |
+| `taskmarket/task/<taskId>` | 2 | No | Task proposals |
+| `taskmarket/bid/<taskId>` | 2 | No | Agent bids (cost, ETA, reputation) |
+| `taskmarket/assign/<taskId>` | 2 | No | Winner assignment (leaderless) |
+| `taskmarket/result/<taskId>` | 2 | No | Execution results |
+| `taskmarket/verify/<taskId>` | 2 | No | Verification votes |
+| `taskmarket/proof/<taskId>` | 2 | No | Proof of Coordination |
+| `taskmarket/hive/memory/<key>` | 1 | Yes | Shared agent knowledge |
 
 ## Project Structure
 
 ```
 ├── src/
-│   ├── agent.mjs          # Base agent class (connect, propose, bid, execute, verify)
-│   ├── config.mjs          # Ports, topics, timeouts, shared secret
-│   ├── crypto.mjs          # HMAC-SHA256 signing, anti-replay, payload hashing
-│   ├── reputation.mjs      # Dynamic scoring, decay, persistence, thresholds
-│   ├── proof.mjs           # Proof of Coordination (hash-chained audit log)
-│   └── hive-memory.mjs     # Distributed key-value store (shared agent learning)
+│   ├── agent.mjs           # Base agent class — full coordination lifecycle
+│   ├── config.mjs           # Ports, topics, timeouts, shared secret
+│   ├── crypto.mjs           # HMAC-SHA256 signing, per-agent anti-replay
+│   ├── reputation.mjs       # Dynamic scoring, decay, persistence, thresholds
+│   ├── proof.mjs            # Proof of Coordination (hash-chained audit log)
+│   └── hive-memory.mjs      # Distributed key-value store via MQTT
 ├── agents/
-│   ├── alpha.mjs           # Agent Alpha — proposer, text analysis
-│   ├── beta.mjs            # Agent Beta — computation, text stats
-│   └── gamma.mjs           # Agent Gamma — research, keyword extraction
+│   ├── alpha.mjs            # Agent Alpha — proposer, sentiment analysis
+│   ├── beta.mjs             # Agent Beta — computation, text statistics
+│   └── gamma.mjs            # Agent Gamma — research, keyword extraction
 ├── demo/
-│   ├── run-demo.sh         # Start cluster + run scenario
-│   └── scenario.mjs        # Automated 3-task demonstration
+│   ├── full-demo.sh         # Complete demo: tests + cluster + scenario
+│   ├── run-demo.sh          # Start cluster + run scenario
+│   └── scenario.mjs         # Automated 3-task demonstration
 ├── warmup/
 │   └── stateful-handshake.mjs  # Warm-up: P2P handshake + state replication
 ├── test/
-│   ├── reputation.test.mjs # 27 unit tests for reputation system
-│   └── hive-memory.test.mjs # 20 unit tests for hive memory
+│   ├── reputation.test.mjs  # 27 unit tests
+│   └── hive-memory.test.mjs # 20 unit tests
+├── docs/
+│   ├── ARCHITECTURE.md      # Detailed module descriptions
+│   └── API.md               # Public API reference
 └── foxmq.d/
-    └── address-book.toml   # FoxMQ cluster configuration (4 nodes)
+    └── address-book.toml    # FoxMQ cluster config (4 nodes)
 ```
-
-## MQTT Topics
-
-| Topic | QoS | Purpose |
-|-------|-----|---------|
-| `taskmarket/hello/<agentId>` | 1 | Agent discovery (retain) |
-| `taskmarket/state/<agentId>` | 1 | Heartbeat + reputation (retain) |
-| `taskmarket/task/<taskId>` | 2 | Task proposals |
-| `taskmarket/bid/<taskId>` | 2 | Agent bids |
-| `taskmarket/assign/<taskId>` | 2 | Winner assignment |
-| `taskmarket/result/<taskId>` | 2 | Execution results |
-| `taskmarket/verify/<taskId>` | 2 | Verification votes |
-| `taskmarket/proof/<taskId>` | 2 | Proof of Coordination |
-| `taskmarket/hive/memory/<key>` | 1 | Shared agent knowledge (retain) |
-
-## Security
-
-- **Message integrity**: HMAC-SHA256 signature on every message
-- **Anti-replay**: UUID nonce + 30s timestamp window
-- **Unsigned messages rejected**: no signature = dropped
-- **Multi-signed Proof of Coordination**: each phase hashed and signed
 
 ## Reputation System
 
 | Parameter | Value |
 |-----------|-------|
 | Initial score | 50 |
-| Success | +10 base + up to +5 quality bonus |
+| Success | +10 base + up to +5 quality bonus (proportional to speed) |
 | Failure | -15 |
 | Decay | -1 point/hour of inactivity |
-| Critical threshold | 20 (blocked from critical tasks) |
+| Critical threshold | 20 (blocked from critical tasks below this) |
 | Score range | 0 — 100 |
+| Bid score | Normalized 0.0 — 1.0 (used in winner selection formula) |
 | Persistence | `data/reputation.json` |
 
 ## Hive Memory
 
 Distributed key-value store via MQTT. Agents share task execution patterns:
-- When an agent succeeds, it publishes the pattern (task type + strategy)
-- Other agents consult patterns before bidding
+- When an agent executes a task, it publishes the pattern (task type + winning strategy)
+- Other agents consult patterns before bidding to adapt their strategy
 - Conflict resolution: last-write-wins (timestamp)
+- Pattern history: capped at 10 entries per task type
 - Persistence: `data/hive-memory.json`
 
 ## Inspired By

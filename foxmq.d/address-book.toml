@@ -1,0 +1,40 @@
+# key_0.pem
+[[addresses]]
+key = """
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEyvHn3apnrM/JeEaykCgUxwUCD71I
+gS/k2NFY4OredVM8EDSh9nzmhrlKOrvWesmGEferCmfcaKjV8NAZQ3w3Sw==
+-----END PUBLIC KEY-----
+"""
+addr = "127.0.0.1:19793"
+
+# key_1.pem
+[[addresses]]
+key = """
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq31PDxtxvIIr8cmxvjfUvD1EaTE9
+/mtD8Ei72iSx1s9tzkchYmu7tiyTSrIRGsjNHyCmqTdtS4DTGMDu4jsSjg==
+-----END PUBLIC KEY-----
+"""
+addr = "127.0.0.1:19794"
+
+# key_2.pem
+[[addresses]]
+key = """
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEX3YnLs7j8BiDODmSPVPcYY1xQ9mB
+P3OHckmpvw6PUjt/UIkaIpVfUOZaDacTAwZb1BKylWUUtOrnOY7vJ3bnHQ==
+-----END PUBLIC KEY-----
+"""
+addr = "127.0.0.1:19795"
+
+# key_3.pem
+[[addresses]]
+key = """
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFw1EeefJ9MuVG3iICD/ZwkMIUlgD
+rz43ncGJ7ciM5hR0HyrSSL7GR1xFiSOV560/ijHSiYK8iv6674aLVXTceg==
+-----END PUBLIC KEY-----
+"""
+addr = "127.0.0.1:19796"
+

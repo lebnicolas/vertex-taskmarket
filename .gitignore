@@ -1,0 +1,11 @@
+node_modules/
+logs/
+foxmq
+foxmq.zip
+foxmq.d/*.pem
+foxmq.d/users.toml
+.env
+t1.mjs
+t2.mjs
+test-suite-v2.mjs
+*.swp

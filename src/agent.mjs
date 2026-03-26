@@ -15,7 +15,7 @@ export class Agent {
     this.name = name;
     this.port = mqttPort;
     this.capabilities = capabilities;
-    this.reputation = new Reputation();
+    this.reputation = new Reputation(name);
     this.client = null;
     this.peers = new Map();           // peerId → { capabilities, status, reputation, ... }
     this.pendingTasks = new Map();    // taskId → task proposal
@@ -176,7 +176,7 @@ export class Agent {
         capabilities: this.capabilities,
         cost: offer.cost,
         eta_ms: offer.eta_ms,
-        reputation: this.reputation.toJSON().score,
+        reputation: this.reputation.getBidScore(),
       },
     };
     this._publish(`${TOPICS.BID}/${taskId}`, payload, { qos: 2 });
@@ -236,7 +236,7 @@ export class Agent {
     }
 
     const duration_ms = Date.now() - startTime;
-    this.reputation.update(success, duration_ms);
+    this.reputation.update(success, duration_ms, task.deadline_ms || 30000);
     const resultPayload = {
       id: `result-${randomUUID().slice(0, 8)}`,
       type: 'execute',
